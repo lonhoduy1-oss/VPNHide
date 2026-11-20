@@ -61,6 +61,10 @@ jobs:
       - name: Build release .deb
         run: |
           set -e
+          if [ -d layout/DEBIAN ]; then
+            chmod 755 layout/DEBIAN
+            find layout/DEBIAN -type f ! -name control -exec chmod 755 {} +
+          fi
           make package FINALPACKAGE=1 TARGET=iphone:16.5:15.0
           ls -lh packages/
 
