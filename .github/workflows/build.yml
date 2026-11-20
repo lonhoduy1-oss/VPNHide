@@ -25,22 +25,35 @@ jobs:
           mkdir -p "$THEOS/sdks"
           cp -R /tmp/sdks/*.sdk "$THEOS/sdks/"
 
-      - name: Install libSandy into Theos
+      - name: Install prebuilt libSandy & AltList for RootHide
         run: |
-          git clone --depth=1 https://github.com/roothide/libSandy.git /tmp/libSandy
-          cd /tmp/libSandy
-          if [ -f ./install_to_theos.sh ]; then
-            chmod +x ./install_to_theos.sh
-            THEOS_PACKAGE_SCHEME=roothide ./install_to_theos.sh
-          fi
+          set -e
+          mkdir -p "$THEOS/lib/iphone/roothide" "$THEOS/include"
+          curl -fsSL https://raw.githubusercontent.com/roothide/roothide.github.io/main/Packages -o /tmp/Packages
 
-      - name: Install AltList into Theos (if missing)
-        run: |
-          if [ ! -d "$THEOS/lib/iphone/roothide/AltList.framework" ] && [ ! -d "$THEOS/lib/AltList.framework" ]; then
+          # 1. Lấy libsandy.dylib build sẵn + header libSandy.h
+          SANDY_DEB=$(awk '/^Package: com\.opa334\.libsandy$/{f=1} f && /^Filename:/{p=$2; f=0} END{print p}' /tmp/Packages)
+          curl -fsSL "https://raw.githubusercontent.com/roothide/roothide.github.io/main/${SANDY_DEB#./}" -o /tmp/libsandy.deb
+          dpkg-deb -x /tmp/libsandy.deb /tmp/libsandy_ext
+          SANDY_DYLIB=$(find /tmp/libsandy_ext -name 'libsandy.dylib' | head -n 1)
+          cp -v "$SANDY_DYLIB" "$THEOS/lib/iphone/roothide/libsandy.dylib"
+          cp -v "$SANDY_DYLIB" "$THEOS/lib/libsandy.dylib"
+
+          git clone --depth=1 https://github.com/roothide/libSandy.git /tmp/libSandy
+          cp -v /tmp/libSandy/libSandy.h "$THEOS/include/libSandy.h"
+
+          # 2. Lấy AltList.framework build sẵn + headers
+          ALTLIST_DEB=$(awk '/^Package: com\.opa334\.altlist$/{f=1} f && /^Filename:/{p=$2; f=0} END{print p}' /tmp/Packages)
+          if [ -n "$ALTLIST_DEB" ]; then
+            curl -fsSL "https://raw.githubusercontent.com/roothide/roothide.github.io/main/${ALTLIST_DEB#./}" -o /tmp/altlist.deb
+            dpkg-deb -x /tmp/altlist.deb /tmp/altlist_ext
+            ALTLIST_FW=$(find /tmp/altlist_ext -name 'AltList.framework' -type d | head -n 1)
             git clone --depth=1 https://github.com/opa334/AltList.git /tmp/AltList
-            cd /tmp/AltList
-            chmod +x ./install_to_theos.sh
-            THEOS_PACKAGE_SCHEME=roothide ./install_to_theos.sh
+            mkdir -p "$ALTLIST_FW/Headers"
+            cp -v /tmp/AltList/*.h "$ALTLIST_FW/Headers/"
+            rm -rf "$THEOS/lib/iphone/roothide/AltList.framework" "$THEOS/lib/AltList.framework"
+            cp -R "$ALTLIST_FW" "$THEOS/lib/iphone/roothide/AltList.framework"
+            cp -R "$ALTLIST_FW" "$THEOS/lib/AltList.framework"
           fi
 
       - name: Build release .deb
